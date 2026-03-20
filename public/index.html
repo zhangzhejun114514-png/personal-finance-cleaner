@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人财务流水清洗器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">
+                <i class="fa fa-money text-green-600 mr-2"></i>个人财务流水清洗器
+            </h1>
+            <p class="text-gray-600 mt-2">轻松处理账单，AI自动归类消费类型，生成消费结构统计图表</p>
+        </header>
+
+        <main class="max-w-4xl mx-auto bg-white rounded-lg shadow-md p-6">
+            <!-- 文件上传区域 -->
+            <section class="mb-8">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">
+                    <i class="fa fa-upload text-blue-500 mr-2"></i>上传账单
+                </h2>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <form id="uploadForm" enctype="multipart/form-data">
+                        <input type="file" id="csvFile" name="csvFile" accept=".csv,.xlsx" class="hidden" required>
+                        <label for="csvFile" class="cursor-pointer inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
+                            <i class="fa fa-file-text-o mr-2"></i>选择文件
+                        </label>
+                        <p class="text-gray-500 mt-2">支持CSV和XLSX格式账单</p>
+                        <button type="submit" class="mt-4 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200">
+                            <i class="fa fa-cogs mr-2"></i>开始处理
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- 加载状态 -->
+            <div id="loading" class="hidden mb-6 text-center">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
+                <p class="mt-2 text-gray-600">正在处理数据，请稍候...</p>
+            </div>
+
+            <!-- 处理结果 -->
+            <section id="resultSection" class="hidden">
+                <!-- 数据统计 -->
+                <div class="mb-8">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4">
+                        <i class="fa fa-bar-chart text-purple-600 mr-2"></i>消费统计
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <p class="text-gray-500">总交易笔数</p>
+                            <p id="totalTransactions" class="text-2xl font-bold text-gray-800">0</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <p class="text-gray-500">总消费金额</p>
+                            <p id="totalAmount" class="text-2xl font-bold text-red-600">¥0.00</p>
+                        </div>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <p class="text-gray-500">总收入金额</p>
+                            <p id="totalIncome" class="text-2xl font-bold text-green-600">¥0.00</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 消费结构图表 -->
+                <div class="mb-8">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4">
+                        <i class="fa fa-pie-chart text-orange-600 mr-2"></i>消费结构
+                    </h2>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <canvas id="expenseChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 交易明细 -->
+                <div class="mb-4">
+                    <h2 class="text-xl font-semibold text-gray-700 mb-4">
+                        <i class="fa fa-list-alt text-blue-600 mr-2"></i>交易明细
+                    </h2>
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full bg-white border border-gray-200">
+                            <thead>
+                                <tr>
+                                    <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-700">交易时间</th>
+                                    <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-700">交易金额</th>
+                                    <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-700">交易描述</th>
+                                    <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-700">原始分类</th>
+                                    <th class="py-2 px-4 border-b text-left text-sm font-semibold text-gray-700">AI归类</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transactionTableBody">
+                                <!-- 交易数据将通过JavaScript动态添加 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 导出按钮 -->
+                <div class="flex justify-end space-x-4">
+                    <button id="exportCsv" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
+                        <i class="fa fa-download mr-2"></i>导出CSV
+                    </button>
+                    <button id="exportPdf" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
+                        <i class="fa fa-file-pdf-o mr-2"></i>导出PDF
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <footer class="text-center mt-8 text-gray-500 text-sm">
+            <p>© 2026 个人财务流水清洗器 | 版本 1.0.0</p>
+        </footer>
+    </div>
+
+    <script>
+        // 表单提交处理
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('csvFile');
+            if (!fileInput.files || fileInput.files.length === 0) {
+                alert('请选择CSV文件');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('csvFile', fileInput.files[0]);
+            
+            // 显示加载状态
+            document.getElementById('loading').classList.remove('hidden');
+            
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || '上传失败');
+                }
+                
+                const data = await response.json();
+                
+                // 隐藏加载状态，显示结果
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('resultSection').classList.remove('hidden');
+                
+                // 更新统计数据
+                document.getElementById('totalTransactions').textContent = data.totalTransactions || 0;
+                document.getElementById('totalAmount').textContent = `¥${(data.totalAmount || 0).toFixed(2)}`;
+                document.getElementById('totalIncome').textContent = `¥${(data.totalIncome || 0).toFixed(2)}`;
+                
+                // 生成消费结构图表
+                generateExpenseChart(data.expenseCategories);
+                
+                // 填充交易明细表格
+                populateTransactionTable(data.transactions);
+                
+                // 显示成功提示
+                const successMessage = document.createElement('div');
+                successMessage.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 flex items-center';
+                successMessage.innerHTML = '<i class="fa fa-check-circle mr-2"></i>上传成功！数据已存储到 Supabase';
+                document.body.appendChild(successMessage);
+                
+                // 3秒后自动消失
+                setTimeout(() => {
+                    successMessage.classList.add('opacity-0', 'transition-opacity', 'duration-500');
+                    setTimeout(() => {
+                        successMessage.remove();
+                    }, 500);
+                }, 3000);
+                
+            } catch (error) {
+                document.getElementById('loading').classList.add('hidden');
+                alert('处理失败: ' + error.message);
+            }
+        });
+        
+        // 生成消费结构图表
+        function generateExpenseChart(categories) {
+            const ctx = document.getElementById('expenseChart').getContext('2d');
+            
+            // 销毁现有图表
+            if (window.expenseChart && typeof window.expenseChart.destroy === 'function') {
+                window.expenseChart.destroy();
+            }
+            
+            // 确保 categories 是一个对象
+            categories = categories || {};
+            
+            window.expenseChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(categories),
+                    datasets: [{
+                        data: Object.values(categories),
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                            '#9966FF', '#FF9F40', '#8AC440', '#FF5722',
+                            '#607D8B', '#E91E63', '#3F51B5', '#00BCD4'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        title: {
+                            display: true,
+                            text: '消费分类占比'
+                        }
+                    }
+                }
+            });
+        }
+        
+        // 填充交易明细表格
+        function populateTransactionTable(transactions) {
+            const tableBody = document.getElementById('transactionTableBody');
+            tableBody.innerHTML = '';
+            
+            transactions.forEach(transaction => {
+                const row = document.createElement('tr');
+                
+                const timeCell = document.createElement('td');
+                timeCell.className = 'py-2 px-4 border-b';
+                timeCell.textContent = transaction.time;
+                row.appendChild(timeCell);
+                
+                const amountCell = document.createElement('td');
+                amountCell.className = 'py-2 px-4 border-b';
+                const amount = transaction.amount || 0;
+                amountCell.textContent = `¥${amount.toFixed(2)}`;
+                amountCell.style.color = amount < 0 ? 'red' : 'green';
+                row.appendChild(amountCell);
+                
+                const descriptionCell = document.createElement('td');
+                descriptionCell.className = 'py-2 px-4 border-b';
+                descriptionCell.textContent = transaction.description;
+                row.appendChild(descriptionCell);
+                
+                const originalCategoryCell = document.createElement('td');
+                originalCategoryCell.className = 'py-2 px-4 border-b';
+                originalCategoryCell.textContent = transaction.originalCategory;
+                row.appendChild(originalCategoryCell);
+                
+                const aiCategoryCell = document.createElement('td');
+                aiCategoryCell.className = 'py-2 px-4 border-b';
+                aiCategoryCell.textContent = transaction.aiCategory;
+                row.appendChild(aiCategoryCell);
+                
+                tableBody.appendChild(row);
+            });
+        }
+        
+        // 导出CSV
+        document.getElementById('exportCsv').addEventListener('click', () => {
+            // 实现CSV导出功能
+            alert('CSV导出功能开发中');
+        });
+        
+        // 导出PDF
+        document.getElementById('exportPdf').addEventListener('click', () => {
+            // 实现PDF导出功能
+            alert('PDF导出功能开发中');
+        });
+    </script>
+</body>
+</html>

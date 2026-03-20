@@ -1,0 +1,25 @@
+{
+  "name": "personal-finance-cleaner",
+  "version": "1.0.0",
+  "description": "个人财务流水清洗器，用于处理支付宝导出的CSV账单",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "nodemon server/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "csv-parser": "^3.2.0",
+    "chart.js": "^4.4.8",
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "keywords": ["finance", "personal", "csv", "alipay"],
+  "author": "",
+  "license": "MIT"
+}
