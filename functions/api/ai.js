@@ -41,49 +41,84 @@ export async function onRequest(context) {
     let advice;
     
     if (!zhipuApiKey) {
-      // 如果 API Key 未配置，使用模拟数据
-      console.log('智谱 AI API Key 未配置，使用模拟数据');
-      advice = getMockAdvice(financialGoal, financialQuestion);
+      // 如果 API Key 未配置，返回错误信息
+      console.error('智谱 AI API Key 未配置');
+      return new Response(JSON.stringify({ 
+        error: '智谱 AI API Key 未配置，请联系管理员',
+        details: '环境变量 ZHIPU_API_KEY 未设置'
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
     } else {
-      try {
-        console.log('准备调用智谱 AI API，理财目标:', financialGoal, '具体问题:', financialQuestion);
-        const response = await fetch('https://api.zhipuai.cn/v3/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${zhipuApiKey}`
-          },
-          body: JSON.stringify({
+      let apiCallSuccess = false;
+      let retryCount = 0;
+      const maxRetries = 3; // 增加重试次数
+      
+      while (!apiCallSuccess && retryCount < maxRetries) {
+        try {
+          retryCount++;
+          console.log(`第 ${retryCount} 次尝试调用智谱 AI API，理财目标: ${financialGoal}，具体问题: ${financialQuestion}`);
+          
+          // 构建完整的请求参数
+          const requestData = {
             model: 'glm-4',
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userMessage }
             ],
             temperature: 0.7,
-            max_tokens: 500
-          }),
-          signal: AbortSignal.timeout(15000) // 添加 15 秒超时
-        });
-        
-        if (!response.ok) {
-          throw new Error(`API 调用失败: ${response.status} ${response.statusText}`);
+            max_tokens: 1000, // 增加最大 tokens
+            top_p: 0.9
+          };
+          
+          console.log('发送请求到智谱 AI API:', JSON.stringify(requestData, null, 2));
+          
+          const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${zhipuApiKey}`,
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify(requestData),
+            signal: AbortSignal.timeout(60000) // 增加超时时间到 60 秒
+          });
+          
+          if (!response.ok) {
+            throw new Error(`API 调用失败: ${response.status} ${response.statusText}`);
+          }
+          
+          const data = await response.json();
+          console.log('智谱 AI API 响应:', JSON.stringify(data, null, 2));
+          
+          // 提取理财建议
+          if (data && data.choices && data.choices.length > 0) {
+            advice = data.choices[0].message.content;
+            console.log('API 调用成功，获取到理财建议');
+            apiCallSuccess = true;
+          } else {
+            throw new Error('智谱 AI API 返回的响应格式不正确');
+          }
+        } catch (apiError) {
+          console.error(`第 ${retryCount} 次 API 调用失败:`, apiError);
+          if (retryCount >= maxRetries) {
+            // 如果达到最大重试次数，返回错误信息
+            console.error('达到最大重试次数，API 调用失败');
+            return new Response(JSON.stringify({ 
+              error: '获取理财建议失败，请稍后重试',
+              details: apiError.message
+            }), {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' }
+            });
+          } else {
+            // 等待一段时间后重试，每次重试等待时间递增
+            const waitTime = 2000 * retryCount;
+            console.log(`等待 ${waitTime} 毫秒后重试...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          }
         }
-        
-        const data = await response.json();
-        console.log('智谱 AI API 响应:', JSON.stringify(data, null, 2));
-        
-        // 提取理财建议
-        if (data && data.choices && data.choices.length > 0) {
-          advice = data.choices[0].message.content;
-          console.log('API 调用成功，获取到理财建议');
-        } else {
-          throw new Error('智谱 AI API 返回的响应格式不正确');
-        }
-      } catch (apiError) {
-        console.error('获取理财建议失败:', apiError);
-        // 如果 API 调用失败，使用模拟数据
-        console.log('API 调用失败，使用模拟数据');
-        advice = getMockAdvice(financialGoal, financialQuestion);
       }
     }
     
