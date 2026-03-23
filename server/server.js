@@ -372,8 +372,11 @@ app.post('/api/financial-advice', async (req, res) => {
             // 如果 API Key 未配置，使用模拟数据
             console.log('智谱 AI API Key 未配置，使用模拟数据');
             advice = getMockAdvice(financialGoal, financialQuestion);
+            console.log('使用模拟数据，理财目标:', financialGoal, '具体问题:', financialQuestion);
         } else {
+            console.log('智谱 AI API Key 已配置，尝试调用 API');
             try {
+                console.log('准备调用智谱 AI API，理财目标:', financialGoal, '具体问题:', financialQuestion);
                 const response = await axios.post(
                     'https://api.zhipuai.cn/v3/chat/completions',
                     {
@@ -400,17 +403,23 @@ app.post('/api/financial-advice', async (req, res) => {
                 // 提取理财建议
                 if (response.data && response.data.choices && response.data.choices.length > 0) {
                     advice = response.data.choices[0].message.content;
+                    console.log('API 调用成功，获取到理财建议');
                 } else {
                     throw new Error('智谱 AI API 返回的响应格式不正确');
                 }
             } catch (apiError) {
                 console.error('获取理财建议失败:', apiError);
                 console.error('错误详情:', apiError.response ? apiError.response.data : apiError);
+                console.error('错误堆栈:', apiError.stack);
                 // 如果 API 调用失败，使用模拟数据
                 console.log('API 调用失败，使用模拟数据');
                 advice = getMockAdvice(financialGoal, financialQuestion);
+                console.log('使用模拟数据，理财目标:', financialGoal, '具体问题:', financialQuestion);
             }
         }
+        
+        // 打印最终返回的建议
+        console.log('最终返回的理财建议:', advice.substring(0, 100) + '...'); // 只打印前 100 个字符
         
         // 返回结果
         res.json({ advice });
