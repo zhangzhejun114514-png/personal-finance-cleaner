@@ -39,19 +39,10 @@ export async function onRequest(context) {
     // 调用智谱 AI API
     const zhipuApiKey = context.env.ZHIPU_API_KEY;
     let advice;
+    let apiCallSuccess = false;
     
-    if (!zhipuApiKey) {
-      // 如果 API Key 未配置，返回错误信息
-      console.error('智谱 AI API Key 未配置');
-      return new Response(JSON.stringify({ 
-        error: '智谱 AI API Key 未配置，请联系管理员',
-        details: '环境变量 ZHIPU_API_KEY 未设置'
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      });
-    } else {
-      let apiCallSuccess = false;
+    if (zhipuApiKey) {
+      console.log('智谱 AI API Key 已配置，尝试调用 API');
       let retryCount = 0;
       const maxRetries = 3; // 增加重试次数
       
@@ -103,15 +94,8 @@ export async function onRequest(context) {
         } catch (apiError) {
           console.error(`第 ${retryCount} 次 API 调用失败:`, apiError);
           if (retryCount >= maxRetries) {
-            // 如果达到最大重试次数，返回错误信息
-            console.error('达到最大重试次数，API 调用失败');
-            return new Response(JSON.stringify({ 
-              error: '获取理财建议失败，请稍后重试',
-              details: apiError.message
-            }), {
-              status: 500,
-              headers: { 'Content-Type': 'application/json' }
-            });
+            // 如果达到最大重试次数，使用模拟数据作为备选
+            console.error('达到最大重试次数，API 调用失败，使用模拟数据作为备选');
           } else {
             // 等待一段时间后重试，每次重试等待时间递增
             const waitTime = 2000 * retryCount;
@@ -120,6 +104,15 @@ export async function onRequest(context) {
           }
         }
       }
+    } else {
+      // 如果 API Key 未配置，使用模拟数据
+      console.error('智谱 AI API Key 未配置，使用模拟数据');
+    }
+    
+    // 如果 API 调用失败，使用模拟数据作为备选
+    if (!apiCallSuccess) {
+      advice = getMockAdvice(financialGoal, financialQuestion);
+      console.log('使用模拟数据作为理财建议');
     }
     
     // 打印最终返回的建议
