@@ -41,72 +41,58 @@ export async function onRequest(context) {
     let advice;
     let apiCallSuccess = false;
     
-    if (zhipuApiKey) {
-      console.log('智谱 AI API Key 已配置，尝试调用 API');
-      let retryCount = 0;
-      const maxRetries = 3; // 增加重试次数
-      
-      while (!apiCallSuccess && retryCount < maxRetries) {
-        try {
-          retryCount++;
-          console.log(`第 ${retryCount} 次尝试调用智谱 AI API，理财目标: ${financialGoal}，具体问题: ${financialQuestion}`);
-          
-          // 构建完整的请求参数
-          const requestData = {
-            model: 'glm-4',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userMessage }
-            ],
-            temperature: 0.7,
-            max_tokens: 1000, // 增加最大 tokens
-            top_p: 0.9
-          };
-          
-          console.log('发送请求到智谱 AI API:', JSON.stringify(requestData, null, 2));
-          
-          const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${zhipuApiKey}`,
-              'Accept': 'application/json'
-            },
-            body: JSON.stringify(requestData),
-            signal: AbortSignal.timeout(60000) // 增加超时时间到 60 秒
-          });
-          
-          if (!response.ok) {
-            throw new Error(`API 调用失败: ${response.status} ${response.statusText}`);
-          }
-          
-          const data = await response.json();
-          console.log('智谱 AI API 响应:', JSON.stringify(data, null, 2));
-          
-          // 提取理财建议
-          if (data && data.choices && data.choices.length > 0) {
-            advice = data.choices[0].message.content;
-            console.log('API 调用成功，获取到理财建议');
-            apiCallSuccess = true;
-          } else {
-            throw new Error('智谱 AI API 返回的响应格式不正确');
-          }
-        } catch (apiError) {
-          console.error(`第 ${retryCount} 次 API 调用失败:`, apiError);
-          if (retryCount >= maxRetries) {
-            // 如果达到最大重试次数，使用模拟数据作为备选
-            console.error('达到最大重试次数，API 调用失败，使用模拟数据作为备选');
-          } else {
-            // 等待一段时间后重试，每次重试等待时间递增
-            const waitTime = 2000 * retryCount;
-            console.log(`等待 ${waitTime} 毫秒后重试...`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-          }
+    // 尝试调用智谱 AI API
+    try {
+      if (zhipuApiKey) {
+        console.log('智谱 AI API Key 已配置，尝试调用 API');
+        
+        // 构建完整的请求参数
+        const requestData = {
+          model: 'glm-4',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000,
+          top_p: 0.9
+        };
+        
+        console.log('发送请求到智谱 AI API:', JSON.stringify(requestData, null, 2));
+        
+        const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${zhipuApiKey}`,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(requestData),
+          signal: AbortSignal.timeout(10000) // 减少超时时间，提高响应速度
+        });
+        
+        if (!response.ok) {
+          throw new Error(`API 调用失败: ${response.status} ${response.statusText}`);
         }
+        
+        const data = await response.json();
+        console.log('智谱 AI API 响应:', JSON.stringify(data, null, 2));
+        
+        // 提取理财建议
+        if (data && data.choices && data.choices.length > 0) {
+          advice = data.choices[0].message.content;
+          console.log('API 调用成功，获取到理财建议');
+          apiCallSuccess = true;
+        } else {
+          throw new Error('智谱 AI API 返回的响应格式不正确');
+        }
+      } else {
+        // 如果 API Key 未配置，使用模拟数据
+        console.error('智谱 AI API Key 未配置，使用模拟数据');
       }
-    } else {
-      // 如果 API Key 未配置，使用模拟数据
-      console.error('智谱 AI API Key 未配置，使用模拟数据');
+    } catch (apiError) {
+      // API 调用失败，使用模拟数据作为备选
+      console.error('API 调用失败，使用模拟数据作为备选:', apiError);
     }
     
     // 如果 API 调用失败，使用模拟数据作为备选
