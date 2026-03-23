@@ -100,13 +100,15 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                         let transaction;
                         
                         // 检查是否是微信账单格式
-                        if (row['交易时间'] && row['交易类型'] && row['交易对方'] && row['金额(元)']) {
+                        if (row['交易时间'] && (row['交易类型'] || row['类型']) && (row['交易对方'] || row['对方']) && (row['金额(元)'] || row['金额'])) {
                             // 微信账单格式
+                            const amountField = row['金额(元)'] || row['金额'];
+                            const incomeExpenseField = row['收/支'] || row['收支'] || '支出';
                             transaction = {
                                 time: row['交易时间'] || '',
-                                amount: parseFloat(row['金额(元)']) * (row['收/支'] === '支出' ? -1 : 1) || 0,
-                                description: row['商品'] || row['交易对方'] || '未描述',
-                                originalCategory: row['交易类型'] || '未分类'
+                                amount: parseFloat(amountField) * (incomeExpenseField === '支出' ? -1 : 1) || 0,
+                                description: row['商品'] || row['交易对方'] || row['对方'] || '未描述',
+                                originalCategory: row['交易类型'] || row['类型'] || '未分类'
                             };
                         } else {
                             // 支付宝账单格式
@@ -165,9 +167,11 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                 // 检查是否是微信账单格式
                 if (row['交易时间'] && (row['交易类型'] || row['类型']) && (row['交易对方'] || row['对方']) && (row['金额(元)'] || row['金额'])) {
                     // 微信账单格式
+                    const amountField = row['金额(元)'] || row['金额'];
+                    const incomeExpenseField = row['收/支'] || row['收支'] || '支出';
                     transaction = {
                         time: row['交易时间'] || '',
-                        amount: parseFloat(row['金额(元)'] || row['金额']) * (row['收/支'] === '支出' ? -1 : 1) || 0,
+                        amount: parseFloat(amountField) * (incomeExpenseField === '支出' ? -1 : 1) || 0,
                         description: row['商品'] || row['交易对方'] || row['对方'] || '未描述',
                         originalCategory: row['交易类型'] || row['类型'] || '未分类'
                     };
