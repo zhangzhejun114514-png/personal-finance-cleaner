@@ -44,38 +44,62 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// AI 分类函数
-function categorizeTransaction(description, originalCategory) {
-    // 简单的分类规则，可以根据实际需求扩展
-    const categories = {
-        '餐饮': ['吃饭', '餐厅', '饭店', '美食', '外卖', '餐饮'],
-        '购物': ['购物', '超市', '商城', '淘宝', '京东', '天猫'],
-        '交通': ['打车', '公交', '地铁', '加油', '停车', '交通'],
-        '娱乐': ['电影', '游戏', '娱乐', '休闲', '旅游', '景点'],
-        '生活': ['生活', '日常', '家居', '水电', '物业', '房租'],
-        '医疗': ['医院', '药店', '医疗', '健康'],
-        '教育': ['教育', '学习', '培训', '学校', '书籍'],
-        '其他': []
-    };
-    
+// AI 分类函数（完全使用智谱 AI API）
+async function categorizeTransaction(description, originalCategory) {
     // 确保 description 和 originalCategory 是字符串
     description = description || '';
     originalCategory = originalCategory || '';
     
-    // 优先根据交易描述分类
-    for (const [category, keywords] of Object.entries(categories)) {
-        if (keywords.some(keyword => description.includes(keyword))) {
-            return category;
+    // 使用智谱 AI API 进行分类
+    try {
+        const zhipuApiKey = process.env.ZHIPU_API_KEY;
+        if (zhipuApiKey) {
+            console.log('使用智谱 AI API 进行交易分类');
+            
+            const systemPrompt = `你是一个专业的交易分类助手，负责根据交易描述和原始分类对交易进行分类。
+
+分类规则：
+1. 分类结果必须是以下类别之一：餐饮、购物、交通、娱乐、生活、医疗、教育、其他
+2. 根据交易描述和原始分类，选择最适合的类别
+3. 只返回类别名称，不要返回其他任何内容`;
+            
+            const userMessage = `交易描述：${description}\n原始分类：${originalCategory}`;
+            
+            const requestData = {
+                model: 'glm-4',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userMessage }
+                ],
+                temperature: 0.1,
+                max_tokens: 10,
+                top_p: 0.9
+            };
+            
+            const response = await axios.post(
+                'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+                requestData,
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${zhipuApiKey}`,
+                        'Accept': 'application/json'
+                    },
+                    timeout: 10000
+                }
+            );
+            
+            if (response.data && response.data.choices && response.data.choices.length > 0) {
+                const category = response.data.choices[0].message.content.trim();
+                console.log('AI 分类结果:', category);
+                return category;
+            }
         }
+    } catch (error) {
+        console.error('AI 分类失败:', error);
     }
     
-    // 其次根据原始分类
-    for (const [category, keywords] of Object.entries(categories)) {
-        if (keywords.some(keyword => originalCategory.includes(keyword))) {
-            return category;
-        }
-    }
-    
+    // 如果 AI 分类失败，返回默认类别
     return '其他';
 }
 
@@ -153,7 +177,7 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                         }
                         
                         // AI 自动分类
-                        transaction.aiCategory = categorizeTransaction(transaction.description, transaction.originalCategory);
+                        transaction.aiCategory = await categorizeTransaction(transaction.description, transaction.originalCategory);
                         
                         // 统计消费分类
                         if (transaction.amount < 0) {
@@ -236,7 +260,7 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                 }
                 
                 // AI 自动分类
-                transaction.aiCategory = categorizeTransaction(transaction.description, transaction.originalCategory);
+                transaction.aiCategory = await categorizeTransaction(transaction.description, transaction.originalCategory);
                 
                 // 统计消费分类
                 if (transaction.amount < 0) {
