@@ -44,26 +44,28 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-// AI 分类函数（完全使用智谱 AI API）
-async function categorizeTransaction(description, originalCategory) {
-    // 确保 description 和 originalCategory 是字符串
-    description = description || '';
-    originalCategory = originalCategory || '';
-    
-    // 使用智谱 AI API 进行分类
+// AI 文档分类函数（完全使用智谱 AI API）
+async function categorizeDocument(transactions) {
+    // 使用智谱 AI API 进行文档级分类
     try {
         const zhipuApiKey = process.env.ZHIPU_API_KEY;
         if (zhipuApiKey) {
-            console.log('使用智谱 AI API 进行交易分类');
+            console.log('使用智谱 AI API 进行文档级交易分类');
             
-            const systemPrompt = `你是一个专业的交易分类助手，负责根据交易描述和原始分类对交易进行分类。
+            // 构建交易数据字符串
+            const transactionsText = transactions.map((transaction, index) => {
+                return `${index + 1}. 交易描述：${transaction.description}\n   原始分类：${transaction.originalCategory}\n   金额：${transaction.amount}`;
+            }).join('\n\n');
+            
+            const systemPrompt = `你是一个专业的交易分类助手，负责对整个文档中的交易进行分类。
 
 分类规则：
-1. 分类结果必须是以下类别之一：餐饮、购物、交通、娱乐、生活、医疗、教育、其他
+1. 对每笔交易，返回一个类别，必须是以下类别之一：餐饮、购物、交通、娱乐、生活、医疗、教育、其他
 2. 根据交易描述和原始分类，选择最适合的类别
-3. 只返回类别名称，不要返回其他任何内容`;
+3. 输出格式必须是 JSON 数组，每个元素是对应交易的类别，顺序与输入交易顺序一致
+4. 只返回 JSON 数组，不要返回其他任何内容`;
             
-            const userMessage = `交易描述：${description}\n原始分类：${originalCategory}`;
+            const userMessage = `请对以下交易进行分类：\n\n${transactionsText}`;
             
             const requestData = {
                 model: 'glm-4',
@@ -72,7 +74,7 @@ async function categorizeTransaction(description, originalCategory) {
                     { role: 'user', content: userMessage }
                 ],
                 temperature: 0.1,
-                max_tokens: 10,
+                max_tokens: 2000,
                 top_p: 0.9
             };
             
@@ -85,22 +87,29 @@ async function categorizeTransaction(description, originalCategory) {
                         'Authorization': `Bearer ${zhipuApiKey}`,
                         'Accept': 'application/json'
                     },
-                    timeout: 10000
+                    timeout: 30000
                 }
             );
             
             if (response.data && response.data.choices && response.data.choices.length > 0) {
-                const category = response.data.choices[0].message.content.trim();
-                console.log('AI 分类结果:', category);
-                return category;
+                const categoriesText = response.data.choices[0].message.content.trim();
+                console.log('AI 分类结果:', categoriesText);
+                
+                // 解析 JSON 数组
+                try {
+                    const categories = JSON.parse(categoriesText);
+                    return categories;
+                } catch (parseError) {
+                    console.error('解析 AI 分类结果失败:', parseError);
+                }
             }
         }
     } catch (error) {
-        console.error('AI 分类失败:', error);
+        console.error('AI 文档分类失败:', error);
     }
     
-    // 如果 AI 分类失败，返回默认类别
-    return '其他';
+    // 如果 AI 分类失败，返回默认类别数组
+    return transactions.map(() => '其他');
 }
 
 // 上传处理
@@ -176,18 +185,6 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                             totalIncome += transaction.amount;
                         }
                         
-                        // AI 自动分类
-                        transaction.aiCategory = await categorizeTransaction(transaction.description, transaction.originalCategory);
-                        
-                        // 统计消费分类
-                        if (transaction.amount < 0) {
-                            const category = transaction.aiCategory;
-                            if (!expenseCategories[category]) {
-                                expenseCategories[category] = 0;
-                            }
-                            expenseCategories[category] += Math.abs(transaction.amount);
-                        }
-                        
                         transactions.push(transaction);
                         totalTransactions++;
                     })
@@ -209,7 +206,8 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
             
             console.log('XLSX 工作表:', sheetName, '，共', rows.length, '行数据');
             
-            rows.forEach((row, index) => {
+            for (let index = 0; index < rows.length; index++) {
+                const row = rows[index];
                 // 输出前几行数据，查看实际的字段名称
                 if (index < 2) {
                     console.log('XLSX 行数据:', row);
@@ -259,8 +257,23 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                     totalIncome += transaction.amount;
                 }
                 
-                // AI 自动分类
-                transaction.aiCategory = await categorizeTransaction(transaction.description, transaction.originalCategory);
+                transactions.push(transaction);
+                totalTransactions++;
+            }
+            
+            console.log('XLSX 解析完成，共解析', totalTransactions, '条记录');
+        } else {
+            throw new Error('不支持的文件格式，请上传 CSV 或 XLSX 文件');
+        }
+        
+        // AI 文档级分类
+        if (transactions.length > 0) {
+            console.log('开始 AI 文档级分类');
+            const categories = await categorizeDocument(transactions);
+            
+            // 为每笔交易分配分类
+            transactions.forEach((transaction, index) => {
+                transaction.aiCategory = categories[index] || '其他';
                 
                 // 统计消费分类
                 if (transaction.amount < 0) {
@@ -270,14 +283,9 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                     }
                     expenseCategories[category] += Math.abs(transaction.amount);
                 }
-                
-                transactions.push(transaction);
-                totalTransactions++;
             });
             
-            console.log('XLSX 解析完成，共解析', totalTransactions, '条记录');
-        } else {
-            throw new Error('不支持的文件格式，请上传 CSV 或 XLSX 文件');
+            console.log('AI 文档级分类完成');
         }
         
         // 删除临时文件

@@ -138,50 +138,64 @@ export async function onRequest(context) {
       }
     }
     
-    // 尝试使用 AI 分类
+    // 尝试使用 AI 文档级分类
     try {
       const zhipuApiKey = context.env.ZHIPU_API_KEY;
       if (zhipuApiKey) {
-        console.log('使用智谱 AI API 进行交易分类');
+        console.log('使用智谱 AI API 进行文档级交易分类');
         
-        // 批量分类
-        for (const transaction of transactions) {
-          const systemPrompt = `你是一个专业的交易分类助手，负责根据交易描述和原始分类对交易进行分类。
+        // 构建交易数据字符串
+        const transactionsText = transactions.map((transaction, index) => {
+          return `${index + 1}. 交易描述：${transaction.description}\n   原始分类：${transaction.originalCategory}\n   金额：${transaction.amount}`;
+        }).join('\n\n');
+        
+        const systemPrompt = `你是一个专业的交易分类助手，负责对整个文档中的交易进行分类。
 
 分类规则：
-1. 分类结果必须是以下类别之一：餐饮、购物、交通、娱乐、生活、医疗、教育、其他
+1. 对每笔交易，返回一个类别，必须是以下类别之一：餐饮、购物、交通、娱乐、生活、医疗、教育、其他
 2. 根据交易描述和原始分类，选择最适合的类别
-3. 只返回类别名称，不要返回其他任何内容`;
-          
-          const userMessage = `交易描述：${transaction.description}\n原始分类：${transaction.originalCategory}`;
-          
-          const requestData = {
-            model: 'glm-4',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userMessage }
-            ],
-            temperature: 0.1,
-            max_tokens: 10,
-            top_p: 0.9
-          };
-          
-          const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${zhipuApiKey}`,
-              'Accept': 'application/json'
-            },
-            body: JSON.stringify(requestData),
-            signal: AbortSignal.timeout(5000)
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data && data.choices && data.choices.length > 0) {
-              transaction.aiCategory = data.choices[0].message.content.trim();
-              console.log('AI 分类结果:', transaction.aiCategory);
+3. 输出格式必须是 JSON 数组，每个元素是对应交易的类别，顺序与输入交易顺序一致
+4. 只返回 JSON 数组，不要返回其他任何内容`;
+        
+        const userMessage = `请对以下交易进行分类：\n\n${transactionsText}`;
+        
+        const requestData = {
+          model: 'glm-4',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+          ],
+          temperature: 0.1,
+          max_tokens: 2000,
+          top_p: 0.9
+        };
+        
+        const response = await fetch('https://open.bigmodel.cn/api/paas/v4/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${zhipuApiKey}`,
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(requestData),
+          signal: AbortSignal.timeout(30000)
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.choices && data.choices.length > 0) {
+            const categoriesText = data.choices[0].message.content.trim();
+            console.log('AI 分类结果:', categoriesText);
+            
+            // 解析 JSON 数组
+            try {
+              const categories = JSON.parse(categoriesText);
+              // 为每笔交易分配分类
+              transactions.forEach((transaction, index) => {
+                transaction.aiCategory = categories[index] || '其他';
+              });
+            } catch (parseError) {
+              console.error('解析 AI 分类结果失败:', parseError);
             }
           }
         }
