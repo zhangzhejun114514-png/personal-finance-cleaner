@@ -95,6 +95,7 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
     try {
         // 根据文件扩展名判断文件类型
         const fileExtension = path.extname(req.file.originalname).toLowerCase();
+        console.log('文件类型:', fileExtension);
         
         if (fileExtension === '.csv') {
             // 解析 CSV 文件
@@ -102,18 +103,37 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                 fs.createReadStream(filePath)
                     .pipe(csv())
                     .on('data', (row) => {
+                        // 输出前几行数据，查看实际的字段名称
+                        if (totalTransactions < 2) {
+                            console.log('CSV 行数据:', row);
+                        }
+                        
                         let transaction;
                         
                         // 检查是否是微信账单格式
-                        if (row['交易时间'] && (row['交易类型'] || row['类型']) && (row['交易对方'] || row['对方']) && (row['金额(元)'] || row['金额'])) {
+                        if (row['交易时间'] || row['时间']) {
                             // 微信账单格式
-                            const amountField = row['金额(元)'] || row['金额'];
-                            const incomeExpenseField = row['收/支'] || row['收支'] || '支出';
+                            const timeField = row['交易时间'] || row['时间'] || '';
+                            const amountField = row['金额(元)'] || row['金额'] || row['交易金额'] || 0;
+                            const incomeExpenseField = row['收/支'] || row['收支'] || row['类型'] || '支出';
+                            const descriptionField = row['商品'] || row['交易对方'] || row['对方'] || row['交易描述'] || row['描述'] || '未描述';
+                            const categoryField = row['交易类型'] || row['类型'] || row['分类'] || '未分类';
+                            
+                            // 处理金额，根据收支类型调整符号
+                            // 移除金额中的货币符号和空格
+                            const cleanedAmountField = String(amountField).replace(/[¥￥,\s]/g, '');
+                            let amount = parseFloat(cleanedAmountField) || 0;
+                            if (incomeExpenseField.includes('支出') || incomeExpenseField.includes('消费')) {
+                                amount = -Math.abs(amount);
+                            } else if (incomeExpenseField.includes('收入') || incomeExpenseField.includes('收款')) {
+                                amount = Math.abs(amount);
+                            }
+                            
                             transaction = {
-                                time: row['交易时间'] || '',
-                                amount: parseFloat(amountField) * (incomeExpenseField === '支出' ? -1 : 1) || 0,
-                                description: row['商品'] || row['交易对方'] || row['对方'] || '未描述',
-                                originalCategory: row['交易类型'] || row['类型'] || '未分类'
+                                time: timeField,
+                                amount: amount,
+                                description: descriptionField,
+                                originalCategory: categoryField
                             };
                         } else {
                             // 支付宝账单格式
@@ -148,9 +168,11 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                         totalTransactions++;
                     })
                     .on('end', () => {
+                        console.log('CSV 解析完成，共解析', totalTransactions, '条记录');
                         resolve();
                     })
                     .on('error', (error) => {
+                        console.error('CSV 解析错误:', error);
                         reject(error);
                     });
             });
@@ -161,6 +183,8 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
             const worksheet = workbook.Sheets[sheetName];
             const rows = XLSX.utils.sheet_to_json(worksheet);
             
+            console.log('XLSX 工作表:', sheetName, '，共', rows.length, '行数据');
+            
             rows.forEach((row, index) => {
                 // 输出前几行数据，查看实际的字段名称
                 if (index < 2) {
@@ -170,15 +194,29 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
                 let transaction;
                 
                 // 检查是否是微信账单格式
-                if (row['交易时间'] && (row['交易类型'] || row['类型']) && (row['交易对方'] || row['对方']) && (row['金额(元)'] || row['金额'])) {
+                if (row['交易时间'] || row['时间']) {
                     // 微信账单格式
-                    const amountField = row['金额(元)'] || row['金额'];
-                    const incomeExpenseField = row['收/支'] || row['收支'] || '支出';
+                    const timeField = row['交易时间'] || row['时间'] || '';
+                    const amountField = row['金额(元)'] || row['金额'] || row['交易金额'] || 0;
+                    const incomeExpenseField = row['收/支'] || row['收支'] || row['类型'] || '支出';
+                    const descriptionField = row['商品'] || row['交易对方'] || row['对方'] || row['交易描述'] || row['描述'] || '未描述';
+                    const categoryField = row['交易类型'] || row['类型'] || row['分类'] || '未分类';
+                    
+                    // 处理金额，根据收支类型调整符号
+                    // 移除金额中的货币符号和空格
+                    const cleanedAmountField = String(amountField).replace(/[¥￥,\s]/g, '');
+                    let amount = parseFloat(cleanedAmountField) || 0;
+                    if (incomeExpenseField.includes('支出') || incomeExpenseField.includes('消费')) {
+                        amount = -Math.abs(amount);
+                    } else if (incomeExpenseField.includes('收入') || incomeExpenseField.includes('收款')) {
+                        amount = Math.abs(amount);
+                    }
+                    
                     transaction = {
-                        time: row['交易时间'] || '',
-                        amount: parseFloat(amountField) * (incomeExpenseField === '支出' ? -1 : 1) || 0,
-                        description: row['商品'] || row['交易对方'] || row['对方'] || '未描述',
-                        originalCategory: row['交易类型'] || row['类型'] || '未分类'
+                        time: timeField,
+                        amount: amount,
+                        description: descriptionField,
+                        originalCategory: categoryField
                     };
                 } else {
                     // 支付宝账单格式
@@ -271,6 +309,7 @@ app.post('/api/upload', upload.single('csvFile'), async (req, res) => {
             fs.unlinkSync(filePath);
         }
         
+        console.error('解析文件失败:', error);
         res.status(500).json({ error: '解析文件失败: ' + error.message });
     }
 });
