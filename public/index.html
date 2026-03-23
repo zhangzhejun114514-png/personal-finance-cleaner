@@ -37,6 +37,37 @@
                 </div>
             </section>
 
+            <!-- AI 理财建议 -->
+            <section class="mb-8">
+                <h2 class="text-xl font-semibold text-gray-700 mb-4">
+                    <i class="fa fa-lightbulb-o text-yellow-500 mr-2"></i>AI 理财建议
+                </h2>
+                <div class="border border-gray-300 rounded-lg p-6">
+                    <div class="mb-4">
+                        <label for="financialGoal" class="block text-gray-700 mb-2">理财目标</label>
+                        <select id="financialGoal" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="save">储蓄</option>
+                            <option value="invest">投资</option>
+                            <option value="budget">预算管理</option>
+                            <option value="debt">债务管理</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label for="financialQuestion" class="block text-gray-700 mb-2">具体问题（选填）</label>
+                        <textarea id="financialQuestion" rows="3" class="w-full px-4 py-2 border border-gray-300 rounded-lg" placeholder="例如：如何优化我的消费结构？"></textarea>
+                    </div>
+                    <button id="getAdvice" class="w-full px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors duration-200">
+                        <i class="fa fa-magic mr-2"></i>获取 AI 理财建议
+                    </button>
+                </div>
+                <div id="adviceResult" class="mt-4 hidden">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">AI 建议</h3>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <p id="adviceContent"></p>
+                    </div>
+                </div>
+            </section>
+
             <!-- 加载状态 -->
             <div id="loading" class="hidden mb-6 text-center">
                 <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-blue-600"></div>
@@ -271,6 +302,49 @@
         document.getElementById('exportPdf').addEventListener('click', () => {
             // 实现PDF导出功能
             alert('PDF导出功能开发中');
+        });
+        
+        // AI 理财建议
+        document.getElementById('getAdvice').addEventListener('click', async () => {
+            const financialGoal = document.getElementById('financialGoal').value;
+            const financialQuestion = document.getElementById('financialQuestion').value;
+            
+            // 显示加载状态
+            const button = document.getElementById('getAdvice');
+            const originalText = button.innerHTML;
+            button.innerHTML = '<i class="fa fa-spinner fa-spin mr-2"></i>正在生成建议...';
+            button.disabled = true;
+            
+            try {
+                const response = await fetch('/api/financial-advice', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        financialGoal,
+                        financialQuestion
+                    })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || '获取理财建议失败');
+                }
+                
+                const data = await response.json();
+                
+                // 显示结果
+                document.getElementById('adviceContent').textContent = data.advice;
+                document.getElementById('adviceResult').classList.remove('hidden');
+                
+            } catch (error) {
+                alert('获取理财建议失败: ' + error.message);
+            } finally {
+                // 恢复按钮状态
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
         });
     </script>
 </body>
